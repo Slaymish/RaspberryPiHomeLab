@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Minecraft control</title>
+
+  <style>
+    :root{
+      --bg:#0f1724; --card:#0b1220; --muted:#9aa4b2; --accent:#10b981;
+      --danger:#ef4444; --glass: rgba(255,255,255,0.04);
+      color-scheme: dark;
+    }
+    html,body{height:100%;margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;}
+    body{background:linear-gradient(180deg,#071022 0%, #081028 100%);display:flex;align-items:center;justify-content:center;padding:20px;color:#e6eef7}
+    .wrap{width:100%;max-width:900px}
+    .header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+    h1{margin:0;font-size:20px}
+    .sub{color:var(--muted);font-size:13px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .card{background:var(--card);border-radius:14px;padding:16px;box-shadow:0 6px 18px rgba(2,6,23,0.6)}
+    .row{display:flex;align-items:center;gap:12px}
+    .label{font-size:12px;color:var(--muted)}
+    .value{font-weight:700;font-size:16px}
+    .badge{display:inline-block;padding:6px 10px;border-radius:999px;font-weight:700;font-size:13px}
+    .btn{padding:8px 14px;border-radius:999px;border:0;cursor:pointer;font-weight:600}
+    .btn-emerald{background:var(--accent);color:#042014}
+    .btn-rose{background:var(--danger);color:#fff}
+    .small{font-size:13px;color:var(--muted)}
+    footer{margin-top:14px;text-align:center;color:var(--muted);font-size:12px}
+    @media (max-width:720px){.grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="header">
+      <div>
+        <h1>Minecraft server</h1>
+        <div class="sub">Docker container and connection status</div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button id="refreshBtn" class="btn" title="Refresh status">Refresh</button>
+        <a href="/static" style="display:none">static</a>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <div class="label">Container</div>
+        <div style="margin-top:8px" class="row">
+          <div>
+            <div class="small">Status</div>
+            <div id="containerStatus" class="value">—</div>
+          </div>
+          <div style="margin-left:8px">
+            <div class="small">Health</div>
+            <div id="healthBadge" class="badge" style="background:rgba(255,255,255,0.04)">—</div>
+          </div>
+
+          <div style="margin-left:auto;text-align:right">
+            <div class="small">Last checked</div>
+            <div id="lastChecked" class="small">—</div>
+          </div>
+        </div>
+
+        <div style="margin-top:12px;display:flex;gap:8px">
+          <button id="toggleBtn" class="btn btn-emerald">Toggle</button>
+          <button id="forceBtn" class="btn" style="background:var(--glass)">Check now</button>
+        </div>
+
+        <div id="contError" style="margin-top:10px;color:#ffb4b4;font-size:13px"></div>
+      </div>
+
+      <div class="card">
+        <div class="label">Minecraft connection</div>
+        <div style="margin-top:12px" class="row">
+          <div>
+            <div class="small">Connection</div>
+            <div id="mcConnection" class="value">—</div>
+          </div>
+
+          <div style="margin-left:auto">
+            <div class="small">Address</div>
+            <div class="small">100.85.104.3:25565</div>
+          </div>
+        </div>
+
+        <div style="margin-top:12px">
+          <div class="small">Live badge</div>
+          <div style="margin-top:8px"><span id="liveBadge" class="badge">—</span></div>
+        </div>
+
+        <div style="margin-top:12px;color:var(--muted);font-size:13px">
+          Polls every 5 seconds. 
+        </div>
+      </div>
+    </div>
+
+    <footer>
+      Built for local use or over tailscale.
+    </footer>
+  </div>
+
+<script>
+  const statusUrl = '/status';
+  const toggleUrl = '/api/toggle';
+
+  const containerStatusEl = document.getElementById('containerStatus');
+  const healthBadgeEl = document.getElementById('healthBadge');
+  const mcConnectionEl = document.getElementById('mcConnection');
+  const liveBadgeEl = document.getElementById('liveBadge');
+  const lastCheckedEl = document.getElementById('lastChecked');
+  const toggleBtn = document.getElementById('toggleBtn');
+  const refreshBtn = document.getElementById('refreshBtn');
+  const forceBtn = document.getElementById('forceBtn');
+  const contError = document.getElementById('contError');
+
+  let polling = null;
+
+  async function fetchStatus() {
+    try {
+      contError.textContent = '';
+      const res = await fetch(statusUrl, {cache: 'no-store'});
+      if(!res.ok) throw new Error('status fetch failed: ' + res.status);
+      const data = await res.json();
+
+      containerStatusEl.textContent = data.container_status ?? 'unknown';
+      healthBadgeEl.textContent = data.health ?? 'unknown';
+      mcConnectionEl.textContent = data.minecraft_online ? 'Online' : 'Offline';
+      liveBadgeEl.textContent = data.minecraft_online ? 'Accepting connections' : 'Not accepting connections';
+      lastCheckedEl.textContent = new Date().toLocaleTimeString();
+
+      // style badges
+      if (data.health === 'healthy') {
+        healthBadgeEl.style.background = 'rgba(16,185,129,0.12)';
+        healthBadgeEl.style.color = '#10b981';
+      } else if (data.health === 'unhealthy') {
+        healthBadgeEl.style.background = 'rgba(239,68,68,0.12)';
+        healthBadgeEl.style.color = '#ef4444';
+      } else {
+        healthBadgeEl.style.background = 'rgba(255,255,255,0.04)';
+        healthBadgeEl.style.color = '#9aa4b2';
+      }
+
+      if (data.minecraft_online) {
+        liveBadgeEl.style.background = 'rgba(16,185,129,0.12)';
+        liveBadgeEl.style.color = '#10b981';
+      } else {
+        liveBadgeEl.style.background = 'rgba(239,68,68,0.12)';
+        liveBadgeEl.style.color = '#ef4444';
+      }
+
+      // set toggle label based on container running
+      if (data.container_status === 'running') {
+        toggleBtn.textContent = 'Stop container';
+        toggleBtn.classList.remove('btn-emerald');
+        toggleBtn.classList.add('btn-rose');
+      } else {
+        toggleBtn.textContent = 'Start container';
+        toggleBtn.classList.remove('btn-rose');
+        toggleBtn.classList.add('btn-emerald');
+      }
+
+    } catch (err) {
+      contError.textContent = String(err);
+    }
+  }
+
+  async function toggleContainer() {
+    try {
+      toggleBtn.disabled = true;
+      toggleBtn.textContent = 'Working...';
+      const res = await fetch(toggleUrl, { method: 'POST' });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error('Toggle failed: ' + res.status + ' ' + text);
+      }
+      await fetchStatus();
+    } catch (err) {
+      contError.textContent = String(err);
+    } finally {
+      toggleBtn.disabled = false;
+    }
+  }
+
+  toggleBtn.addEventListener('click', toggleContainer);
+  refreshBtn.addEventListener('click', fetchStatus);
+  forceBtn.addEventListener('click', fetchStatus);
+
+  // initial and polling
+  fetchStatus();
+  polling = setInterval(fetchStatus, 5000);
+</script>
+</body>
+</html>
+

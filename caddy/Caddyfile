@@ -1,0 +1,52 @@
+# Common snippet for stripping Server header
+(handle_response_headers) {
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "no-referrer-when-downgrade"
+        X-XSS-Protection "1; mode=block"
+    }
+}
+
+# Dashboard
+:8082 {
+    reverse_proxy dashboard:8080
+    import handle_response_headers
+    log {
+        output file /data/logs/dashboard.log
+    }
+}
+
+# Immich
+:8081 {
+    reverse_proxy immich-server:2283
+    import handle_response_headers
+    log {
+        output file /data/logs/immich.log
+    }
+}
+
+# Radicale (CalDAV)
+:8083 {
+    reverse_proxy radicale:5232
+    import handle_response_headers
+    log {
+        output file /data/logs/radicale.log
+    }
+}
+
+# Filestash
+:8080 {
+    reverse_proxy filegator:8080 {
+        header_up Host {http.request.host}
+        header_up X-Forwarded-Host {http.request.host}
+        header_up X-Forwarded-Proto {http.request.scheme}
+        header_up X-Real-IP {http.request.remote}
+    }
+    import handle_response_headers
+    log {
+        output file /data/logs/filestash.log
+    }
+}
+
